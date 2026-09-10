@@ -1,0 +1,53 @@
+#autoload
+# _zpt_filter <小写查询>   输入 _zpt_names，输出 _zpt_hits / _zpt_disp
+#
+# 全插件唯一的热点，所以刻意写得啰嗦一点：
+#   1. 尽量不调用函数——没建过索引的名字才进 _zpt_index
+#   2. 首字母集合一次 glob 否掉绝大多数候选，根本不进 DP
+#   3. 首字母串 / 全拼串前缀命中的直接判正，也不进 DP
+# 剩下真正要跑 DP 的是「半截拼音」这类混合输入，数量很少。
+#
+# 单独拆成一个函数是为了让 tools/bench.zsh 能测到和补全时完全一样
+# 的代码路径。
+
+local q=$1
+local c1=${q[1]}
+local d f py
+local -a keyed
+
+for d in $_zpt_names; do
+  f=${_zpt_first[$d]}
+  if [[ -z $f ]]; then
+    _zpt_index $d
+    f=${_zpt_first[$d]}
+  fi
+  [[ $f == *$c1* ]] || continue
+
+  # 原生补全已经能补出来的不重复加
+  [[ ${(L)d} == $q* ]] && continue
+
+  py=${_zpt_ful[$d]}
+  if [[ ${_zpt_ini[$d]} != $q* && $py != $q* ]]; then
+    _zpt_match $q $d || continue
+  fi
+
+  # 按拼音排序，短的在前。对拼音输入来说这比按码点排直观得多：
+  # wd 应该先给 文档(wendang)，而不是 我的归档(wodeguidang)。
+  keyed+=( "${(l:3::0:)#py}:${py}:${d}" )
+done
+
+_zpt_hits=() _zpt_disp=()
+(( $#keyed )) || return 1
+
+local e
+for e in ${(o)keyed}; do
+  py=${${e#*:}%%:*}
+  d=${e#*:*:}
+  _zpt_hits+=( $d )
+  if (( ZPT_SHOW_PINYIN )); then
+    _zpt_disp+=( "$d  ($py)" )
+  else
+    _zpt_disp+=( "$d" )
+  fi
+done
+return 0

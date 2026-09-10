@@ -1,0 +1,7 @@
+#autoload
+# 目录名的展示用拼音，放进全局 _zpt_pinyin。
+# 热路径上直接读 _zpt_ful 就行，这个函数是给测试和外部调用留的。
+
+_zpt_index $1
+_zpt_pinyin=${_zpt_ful[$1]}
+return 0

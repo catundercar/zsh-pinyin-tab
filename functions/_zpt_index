@@ -1,0 +1,73 @@
+#autoload
+# 给一个目录名建索引，结果进四个内存关联数组：
+#
+#   _zpt_first[名字]  可能的首字母集合，如 「重要」-> "zc"（重 zhong/chong）
+#   _zpt_ini[名字]    首字母串，取每个字最常用读音，如 "wdgd"
+#   _zpt_ful[名字]    全拼串，如 "wodeguidang"
+#   _zpt_syl[名字]    序列化音节表，DP 用
+#
+# 前三个是为了跳过 DP：_zpt_first 一次 glob 就能否掉九成以上的候选，
+# _zpt_ini/_zpt_ful 的前缀命中则可以直接判正，两条快路径加起来把
+# 真正需要跑 DP 的候选压到很少。
+#
+# 缓存 key 是目录名而不是完整路径：文档/下载/项目 这类名字在不同
+# 地方反复出现，一次转换处处受益，也省掉了跟踪 mtime 的麻烦。
+
+local name=$1
+[[ -n ${_zpt_syl[$name]} ]] && return 0
+
+local -a toks opt
+local buf="" c r
+local -i dict_ok=0   # 每个名字最多调一次 _zpt_load_dict，别放进逐字循环
+
+for c in ${(s::)name}; do
+  if [[ $c == [A-Za-z0-9] ]]; then
+    buf+=$c
+    continue
+  fi
+  if [[ -n $buf ]]; then
+    toks+=( ${(L)buf} ); opt+=( 0 ); buf=""
+  fi
+  if [[ $c == [[:ascii:]] ]]; then
+    toks+=( $c ); opt+=( 1 )              # 分隔符：可跳过
+  else
+    (( dict_ok )) || { _zpt_load_dict; dict_ok=1 }
+    r=${_zpt_dict[$c]}
+    if [[ -n $r ]]; then
+      toks+=( $r ); opt+=( 0 )
+    else
+      toks+=( "" ); opt+=( 1 )            # 表外字符（emoji、假名…）：可跳过
+    fi
+  fi
+done
+if [[ -n $buf ]]; then
+  toks+=( ${(L)buf} ); opt+=( 0 )
+fi
+
+local -a ser
+local -i i
+local ini="" ful="" first="" one
+for (( i = 1; i <= $#toks; i++ )); do
+  ser+=( "${opt[i]}${toks[i]}" )
+  if (( ! opt[i] )); then
+    one=${toks[i]%%\|*}
+    ini+=${one[1]}
+    ful+=$one
+  fi
+done
+
+# 首字母集合：从头往后走，可跳过的 token 也要算进来，直到第一个
+# 必选 token 为止
+for (( i = 1; i <= $#toks; i++ )); do
+  for r in ${(s:|:)toks[i]}; do
+    [[ -n $r ]] && first+=${r[1]}
+  done
+  (( opt[i] )) || break
+done
+
+_zpt_syl[$name]="${(j: :)ser}"
+_zpt_ini[$name]=$ini
+_zpt_ful[$name]=$ful
+_zpt_first[$name]=$first
+(( _zpt_dirty++ ))
+return 0

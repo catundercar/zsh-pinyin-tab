@@ -1,0 +1,14 @@
+#autoload
+# 把缓存里的音节表还原成 _zpt_toks / _zpt_opt 两个数组。
+# 真正的转换在 _zpt_index 里，这里只负责反序列化。
+
+local name=$1
+[[ -n ${_zpt_syl[$name]} ]] || _zpt_index $name
+
+_zpt_toks=() _zpt_opt=()
+local e
+for e in ${(s: :)_zpt_syl[$name]}; do
+  _zpt_opt+=( ${e[1]} )
+  _zpt_toks+=( ${e[2,-1]} )
+done
+return 0

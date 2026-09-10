@@ -1,0 +1,71 @@
+#autoload
+# 通用包装：先跑这个命令原本的补全函数，再把拼音候选补上。
+#
+# 早期版本这里写死了 _cd，结果 ZPT_COMMANDS 看着能随便加命令、实际
+# 一加就把那个命令的补全废掉——_cd 只补目录，ls rep<Tab> 补不出
+# report.txt，而且静默无报错。现在原函数是注册时从 $_comps 里存下来的。
+#
+# 注意不要在这个文件里写 #compdef：注册必须走插件入口的 _zpt_register，
+# 那里才会先把原函数存进 _zpt_orig。compinit 扫到 #compdef 抢先注册的话，
+# _zpt_orig 是空的，等于把命令的补全换成了 _default。
+#
+# ── 返回值决定 matcher-list 的命运，这一段是全文件最容易写错的地方 ──
+#
+# _main_complete 会拿 matcher-list 里的每一条 matcher 轮流跑一遍补全，
+# 只要某一轮返回 0 就 break，后面的 matcher 不再试。很多人的配置是
+#
+#     zstyle ':completion:*' matcher-list '' 'm:{a-zA-Z}={A-Za-z}'
+#
+# ——第一轮精确匹配，配不上才用第二轮忽略大小写兜底。
+#
+# 旧代码在这里直接 `return` 了拼音那一步的结果，两个方向都错：
+#
+#   · 拼音命中 → 返回 0 → 第一轮就 break。用户的「忽略大小写」那一轮
+#     永远轮不到，cd wo<Tab> 只剩「我的」，Work 消失了。这就是
+#     「装了这个插件就不能不区分大小写」的真正原因。
+#   · 拼音没命中但原生补全命中了 → 返回 1 → _main_complete 以为这轮
+#     失败，继续往下试 r:|=* / l:|=* 这些子串 matcher，甚至掉到
+#     _approximate。明明已经精确命中，候选里却混进一堆子串匹配。
+#
+# 正确的语义：这一轮到底有没有产出候选。于是
+#
+#   返回值 = 原生补全成功 || 拼音补全成功
+#
+# 还有个副作用要处理：拼音候选该在哪一轮加。每轮都加会让 _zpt_filter
+# 白跑好几遍（它是全插件唯一的热点）；只在第一轮加，又会在
+# 「第一轮原生没中、第二轮才中」时把拼音候选排到原生候选前面，而敲
+# cd w<Tab> 的人多半是想要 work。所以：
+#
+#   只在「这一轮原生补全成功」或「这是最后一轮 matcher」时加拼音候选。
+#
+# 两种情况都保证原生候选先进、拼音候选后进，而且整次补全里 _zpt_filter
+# 恰好只跑一次。
+
+local ZPT_PREFIX=$PREFIX
+local orig=${_zpt_orig[$service]}
+(( $+functions[$orig] )) || orig=""
+
+# 原生补全是 _cd 的（cd/pushd）只给目录，其余给目录+文件
+local mode=all
+[[ $orig == _cd ]] && mode=dirs
+
+local -i oret=1 pret=1
+if [[ -n $orig ]]; then
+  $orig "$@" && oret=0
+else
+  _default "$@" && oret=0
+fi
+
+# 是不是 matcher-list 的最后一轮。_matcher_num / _matchers 都是
+# _main_complete 里的 local，zsh 动态作用域，这里能直接读到。不是从
+# _main_complete 调进来的（没人这么干，但防一手）就当成最后一轮。
+local -i last=1
+if (( $+_matchers )) && (( _matcher_num < $#_matchers )); then
+  last=0
+fi
+
+if (( oret == 0 || last )); then
+  _zpt_pinyin_matches $ZPT_PREFIX $mode && pret=0
+fi
+
+(( oret == 0 || pret == 0 ))

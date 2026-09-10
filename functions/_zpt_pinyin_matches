@@ -1,0 +1,89 @@
+#autoload
+# 往当前补全里补一组拼音候选。返回 1 表示这次不介入。
+#
+#   $1  补全开始时的 $PREFIX 快照（原生补全函数可能已经改写过 $PREFIX）
+#   $2  dirs = 只看目录 / all = 目录和文件都看
+#
+# emulate -L 的作用范围包含嵌套调用，所以 _zpt_filter / _zpt_match 也
+# 跟着回到 zsh 默认选项。这一点很重要：那些函数大量用 (( ... )) 当布尔，
+# 用户要是开了 err_return，函数会从中间被掐断。
+emulate -L zsh
+setopt local_options extended_glob
+
+local pfx=${1-$PREFIX}
+local mode=${2:-dirs}
+
+# ~foo / - / +n / =cmd 这些交给原生
+[[ $pfx == (\~|-|+|=)* ]] && return 1
+
+local base frag dirpfx
+if [[ $pfx == */* ]]; then
+  dirpfx=${pfx%/*}/
+  base=${pfx%/*}
+  [[ -z $base ]] && base=/
+  frag=${pfx##*/}
+else
+  dirpfx=""
+  base=.
+  frag=$pfx
+fi
+
+# 只在纯 ASCII 字母时介入。空片段也不接——否则一进目录敲 Tab，
+# 所有中文目录都会被当成拼音候选再列一遍。
+[[ $frag == [A-Za-z]## ]] || return 1
+# 单个字母几乎不可能是拼音意图，却最容易把原生补全淹掉，默认不接
+(( $#frag >= ZPT_MIN_CHARS )) || return 1
+[[ -d $base ]] || return 1
+
+typeset -ga _zpt_names _zpt_hits _zpt_disp
+if [[ $mode == all ]]; then
+  _zpt_names=( ${base}/*(N:t) )
+else
+  _zpt_names=( ${base}/*(-/N:t) )
+fi
+(( $#_zpt_names )) || return 1
+# /usr/bin 那种几千项的目录里跑匹配没有意义，直接退回原生
+(( $#_zpt_names > ZPT_MAX_ENTRIES )) && return 1
+
+_zpt_filter ${(L)frag} || return 1
+
+# 目录要带 / 后缀，文件不带，所以得分两次 compadd
+local -a dhit ddisp fhit fdisp
+local -i i
+if [[ $mode == dirs ]]; then
+  dhit=( "${_zpt_hits[@]}" ); ddisp=( "${_zpt_disp[@]}" )
+else
+  for (( i = 1; i <= $#_zpt_hits; i++ )); do
+    if [[ -d $base/${_zpt_hits[i]} ]]; then
+      dhit+=( ${_zpt_hits[i]} );  ddisp+=( ${_zpt_disp[i]} )
+    else
+      fhit+=( ${_zpt_hits[i]} );  fdisp+=( ${_zpt_disp[i]} )
+    fi
+  done
+fi
+
+# -U 是关键：默认 zsh 会拿当前词校验候选，「文档」和 wd 没有公共前缀，
+# 会被直接丢掉。-U 关掉校验，允许整词替换。
+# -p 把已经敲进去的目录前缀原样接回去，不然 cd docs/wd 会被替换成
+# 光秃秃的「文档」。
+local -i added=0
+if (( $#dhit )); then
+  compadd -U -S / -p "$dirpfx" -V zpt-pinyin -X '拼音匹配' -d ddisp -a dhit && added=1
+fi
+if (( $#fhit )); then
+  compadd -U -S '' -p "$dirpfx" -V zpt-pinyin -X '拼音匹配' -d fdisp -a fhit && added=1
+fi
+(( added )) || return 1
+
+if (( _zpt_dirty >= ZPT_FLUSH_THRESHOLD )); then
+  _zpt_flush_cache &!
+fi
+
+# 必须强制菜单插入，否则会吃掉用户敲的字。
+# -U 关掉匹配的同时也让补全系统不知道候选和当前词的对应关系，它只
+# 能退而求其次去插「所有候选的公共前缀」。两个中文候选（文档 /
+# 我的Projects）的公共前缀是空串，于是 cd wd<Tab> 直接变成 cd ——
+# 输入被抹掉了。改成 menu 就不走公共前缀那条路，第一次 Tab 直接放
+# 进完整候选，再按 Tab 循环下一个，行为也更像输入法。
+compstate[insert]=menu
+return 0

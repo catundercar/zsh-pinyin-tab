@@ -1,0 +1,52 @@
+#autoload
+# _zpt_match <小写查询> <目录名>  ->  0 表示匹配上
+#
+# DP，不是贪心。反例：输入 wen 配 文档，w 当首字母走不通（剩下的
+# en 匹配不上 dang），必须 wen 整体消耗掉「文」才对。同一位置上
+# 消耗 1 个字符和消耗 3 个字符都可能是正确分支，得同时留着。
+#
+# 状态 cur[j+1] = 「前 i 个字处理完，恰好消耗了 q 的前 j 个字符」可达。
+# 每个读音 p 允许消耗它的任意前缀 p[1..k]，k=1 就是首字母匹配，
+# k=|p| 就是全拼——三种情况一条规则覆盖。
+# q 被完全消耗即命中，不要求目录名被消耗完（前缀补全该有的行为）。
+
+local q=$1 name=$2
+local qlen=${#q}
+(( qlen )) || return 1
+
+_zpt_syllables $name
+local n=$#_zpt_toks
+(( n )) || return 1
+
+local -a cur next
+local i j k r rl maxk
+
+cur=( 1 )
+for (( j = 1; j <= qlen; j++ )); do cur[j+1]=0; done
+
+for (( i = 1; i <= n; i++ )); do
+  if (( _zpt_opt[i] )); then
+    next=( "${cur[@]}" )                  # 可跳过：原状态全部保留
+  else
+    next=(); for (( j = 0; j <= qlen; j++ )); do next[j+1]=0; done
+  fi
+
+  for (( j = 0; j < qlen; j++ )); do
+    (( cur[j+1] )) || continue
+    for r in ${(s:|:)_zpt_toks[i]}; do
+      rl=$#r
+      maxk=$(( rl < qlen - j ? rl : qlen - j ))
+      for (( k = 1; k <= maxk; k++ )); do
+        # 逐字符比，一旦第 k 位不等，更长的 k 也不可能等，直接断
+        [[ ${q[j+k]} == ${r[k]} ]] || break
+        next[j+k+1]=1
+      done
+    done
+  done
+
+  cur=( "${next[@]}" )
+  (( cur[qlen+1] )) && return 0
+  (( ${(j:+:)cur} )) || return 1          # 全 0，后面不用看了
+done
+
+return 1

@@ -1,0 +1,22 @@
+#autoload
+# 懒加载拼音词表。第一次真正需要查表时才触发。
+#
+# 用一个标志位判断是否已加载，不要写成 (( $#_zpt_dict ))：zsh 取关联
+# 数组的元素个数是 O(n)，这个函数每个汉字都会被调一次，实测两万条的
+# 词表上一次 $# 要 0.4ms，光这一句就占掉了建索引 90% 的时间。
+#
+# 也必须用 zcompile 过的版本：原始 .zsh 解析要 210ms，.zwc 只要 6ms。
+# git checkout 不保证 mtime 顺序，所以这里主动比对，需要就重编。
+
+(( _zpt_dict_loaded )) && return 0
+
+local src=$ZPT_DIR/data/pinyin.zsh
+[[ -r $src ]] || { print -u2 "zsh-pinyin-tab: 找不到词表 $src"; return 1 }
+
+if [[ ! -f $src.zwc || $src.zwc -ot $src ]] && [[ -w ${src:h} ]]; then
+  zcompile -R -- $src 2>/dev/null
+fi
+
+source $src
+_zpt_dict_loaded=1
+return 0
