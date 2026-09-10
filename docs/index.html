@@ -24,6 +24,8 @@
   --term-fg:#d3d0c4;
   --term-dim:#7d8177;
   --term-rule:#2b2f31;
+  --term-edge:transparent;   /* 纸底上终端自带强对比，不需要描边 */
+  --mark:rgba(179,58,49,.16);
 
   --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
   --sans:"IBM Plex Sans","IBM Plex Sans SC",system-ui,sans-serif;
@@ -41,8 +43,13 @@
     --ink-faint:#7b8076;
     --cinnabar:#e0685c;
     --rule:#2e332e;
-    --term-bg:#0e100f;
-    --term-rule:#25292a;
+    /* 暗色下页面本身就够黑了，终端要比纸底「亮」一档才还像个嵌进去的
+       窗口；再加一道描边把边界交代清楚。跟浅色下靠明暗反差是同一个
+       目的，手段相反。 */
+    --term-bg:#1d211f;
+    --term-rule:#343a37;
+    --term-edge:#333936;
+    --mark:rgba(224,104,92,.26);
   }
 }
 
@@ -108,12 +115,23 @@ a{color:inherit}
   font-size:1rem;color:var(--ink-soft);
   max-width:var(--measure);margin:0 0 2.2rem;
 }
+/* 「加」是这句话的重点：候选是加上去的，不是把原生补全换掉 */
+.lede-sub em{
+  font-style:normal;color:var(--ink);
+  box-shadow:inset 0 -.42em 0 var(--mark);
+}
+.lede-sub code{
+  font-family:var(--mono);font-size:.88em;
+  background:var(--paper-2);padding:.12em .35em;border-radius:2px;
+  color:var(--ink);
+}
 
 /* ── 可以玩的终端 ───────────────────────────────── */
 .demo{
   background:var(--term-bg);
   border-radius:6px;
   overflow:hidden;
+  border:1px solid var(--term-edge);
   box-shadow:0 1px 0 var(--rule),0 18px 40px -28px rgba(0,0,0,.55);
   max-width:44rem;
 }
@@ -152,7 +170,7 @@ kbd{
   font-family:var(--mono);font-size:.72rem;
   border:1px solid var(--term-rule);border-bottom-width:2px;
   border-radius:3px;padding:.1em .42em;color:var(--term-fg);
-  background:#1d2123;
+  background:var(--term-rule);
 }
 .demo-group{margin-top:1rem}
 .demo-group .label{color:var(--cinnabar);font-size:.78rem;margin-bottom:.35rem}
@@ -220,6 +238,7 @@ h2{
 .code{
   position:relative;
   background:var(--term-bg);color:var(--term-fg);
+  border:1px solid var(--term-edge);
   border-radius:5px;padding:1rem 3.2rem 1rem 1rem;
   font-family:var(--mono);font-size:.86rem;line-height:1.75;
   overflow-x:auto;max-width:46rem;
@@ -229,7 +248,7 @@ h2{
 .copy{
   position:absolute;top:.6rem;right:.6rem;
   font:inherit;font-family:var(--mono);font-size:.72rem;
-  background:#1d2123;color:var(--term-dim);
+  background:var(--term-rule);color:var(--term-dim);
   border:1px solid var(--term-rule);border-radius:3px;
   padding:.22em .55em;cursor:pointer;
 }
@@ -311,9 +330,9 @@ footer .sp{margin-left:auto;font-family:var(--mono);font-size:.78rem}
 
     <p class="lede">在 zsh 里敲拼音，Tab 补出中文文件名。</p>
     <p class="lede-sub">
-      中文目录名一直是 Tab 补全的死角——名字打不出来，只能靠鼠标滚。
-      这个插件把拼音候选<strong>加</strong>在原生补全后面，`cd wd` 就能补出「文档」，
-      原生补全该给的东西一个都不少。
+      中文目录名一直是 Tab 补全的死角：名字敲不出来，Tab 也就无从补起。
+      这个插件把拼音候选<em>加</em>在原生补全后面——<code>cd wd</code> 补出「文档」，
+      而原生补全该给的东西一个都不少。
     </p>
 
     <div class="demo-shell" id="shell">

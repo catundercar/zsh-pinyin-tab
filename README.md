@@ -2,6 +2,8 @@
 
 给 zsh 的补全加拼音匹配。`cd wd<Tab>` 补出 `文档`，`vim bg<Tab>` 补出 `报告.md`。
 
+**[catundercar.github.io/zsh-pinyin-tab](https://catundercar.github.io/zsh-pinyin-tab/)** 上有个能直接敲的演示——敲拼音、按 Tab 换候选，用的是同一套匹配算法。
+
 ```
 ~/notes $ cd wd<Tab>
 拼音匹配
