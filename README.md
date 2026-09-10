@@ -24,23 +24,77 @@
 
 ## 安装
 
+仓库根目录有标准的 `zsh-pinyin-tab.plugin.zsh`，所以主流插件管理器都能
+直接吃，加一行就行。
+
+**oh-my-zsh**
+
 ```zsh
-# zinit
+git clone https://github.com/catundercar/zsh-pinyin-tab \
+  ${ZSH_CUSTOM:-~/.oh-my-zsh/custom}/plugins/zsh-pinyin-tab
+```
+
+然后把它加进 `.zshrc` 的 `plugins=(...)`：
+
+```zsh
+plugins=(git zsh-pinyin-tab)
+```
+
+**zinit**
+
+```zsh
 zinit light catundercar/zsh-pinyin-tab
+```
 
-# antidote / .zsh_plugins.txt
+**antidote** —— 写进 `.zsh_plugins.txt`：
+
+```
 catundercar/zsh-pinyin-tab
+```
 
-# 手动
+**sheldon** —— 写进 `plugins.toml`：
+
+```toml
+[plugins.zsh-pinyin-tab]
+github = "catundercar/zsh-pinyin-tab"
+```
+
+**zplug**
+
+```zsh
+zplug "catundercar/zsh-pinyin-tab"
+```
+
+**antigen**
+
+```zsh
+antigen bundle catundercar/zsh-pinyin-tab
+```
+
+**不用插件管理器**
+
+```zsh
 git clone https://github.com/catundercar/zsh-pinyin-tab ~/.zsh/zsh-pinyin-tab
 echo 'source ~/.zsh/zsh-pinyin-tab/zsh-pinyin-tab.plugin.zsh' >> ~/.zshrc
 ```
 
-仓库里带了 `install.zsh`，它会拷贝到 `~/.zsh/zsh-pinyin-tab` 并改好
-`~/.zshrc`，从旧名字 `zsh-pinyin-cd` 升级上来也认。
+或者克隆下来跑 `zsh install.zsh`——它会拷到 `~/.zsh/zsh-pinyin-tab`、
+备份并改好 `~/.zshrc`，从旧名字 `zsh-pinyin-cd` 升级上来也认。
 
-在 `compinit` 之前或之后加载都行——插件会自己判断，必要时把注册推迟到
-第一个 `precmd`。
+装完 `exec zsh` 重开一下，随便找个有中文目录的地方敲 `cd wd<Tab>`。
+不确定装没装上就跑 `zsh ~/.zsh/zsh-pinyin-tab/tools/doctor.zsh`。
+
+### 几个装的时候会踩的点
+
+在 `compinit` 之前或之后加载**都行**。插件会自己判断：`compdef` 还不存在
+就把注册推迟到第一个 `precmd`，那时 `compinit` 一定跑完了，而且我们的
+注册排在所有 `#compdef` 扫描之后，结果是确定的。oh-my-zsh 是「先加载
+插件、后 compinit」，zinit 手动模式常是反过来，两种都测过。
+
+词表要 `zcompile` 成 `.zwc` 才快（原始 `.zsh` 解析 210ms，`.zwc` 只要
+6ms）。`.zwc` 是二进制词码、跨机器带不保险，所以**不进仓库**——插件第一次
+用到词表时自己编一份，只发生一次。这要求 `data/` 目录可写；装在只读位置
+的话每次开 shell 会多花 200ms，`tools/doctor.zsh` 会提醒你。
 
 需要 zsh 5.8+ 和 UTF-8 的 locale。
 
