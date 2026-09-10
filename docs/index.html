@@ -1,0 +1,606 @@
+<!DOCTYPE html>
+<html lang="zh-Hans">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>zsh-pinyin-tab — 敲拼音，Tab 补出中文文件名</title>
+<meta name="description" content="给 zsh 的补全加拼音匹配。cd wd&lt;Tab&gt; 补出「文档」，vim bg&lt;Tab&gt; 补出「报告.md」。首字母、全拼、半截拼音都认。">
+<meta property="og:title" content="zsh-pinyin-tab">
+<meta property="og:description" content="在 zsh 里敲拼音，Tab 补出中文文件名。">
+<meta property="og:type" content="website">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Sans+SC:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --paper:#e9e6dc;
+  --paper-2:#e2dece;
+  --ink:#1a1d1a;
+  --ink-soft:#4f544c;
+  --ink-faint:#797f74;
+  --cinnabar:#b33a31;
+  --rule:#c8c2b0;
+  --term-bg:#15181a;
+  --term-fg:#d3d0c4;
+  --term-dim:#7d8177;
+  --term-rule:#2b2f31;
+
+  --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+  --sans:"IBM Plex Sans","IBM Plex Sans SC",system-ui,sans-serif;
+  --han:"IBM Plex Sans SC","IBM Plex Sans","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif;
+
+  --measure:34rem;
+  --gut:clamp(1.25rem,5vw,2.5rem);
+}
+@media (prefers-color-scheme:dark){
+  :root{
+    --paper:#141715;
+    --paper-2:#1b1f1c;
+    --ink:#e4e1d6;
+    --ink-soft:#a6aa9e;
+    --ink-faint:#7b8076;
+    --cinnabar:#e0685c;
+    --rule:#2e332e;
+    --term-bg:#0e100f;
+    --term-rule:#25292a;
+  }
+}
+
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{
+  margin:0;
+  background:var(--paper);
+  color:var(--ink);
+  font-family:var(--sans);
+  font-size:16px;
+  line-height:1.65;
+  -webkit-font-smoothing:antialiased;
+}
+a{color:inherit}
+:focus-visible{outline:2px solid var(--cinnabar);outline-offset:3px;border-radius:2px}
+
+.wrap{max-width:62rem;margin:0 auto;padding:0 var(--gut)}
+
+/* ── 顶栏 ───────────────────────────────────────── */
+.top{
+  display:flex;align-items:baseline;gap:1rem;
+  padding:1.4rem 0 1.2rem;
+  border-bottom:1px solid var(--rule);
+  flex-wrap:wrap;
+}
+.top .name{font-family:var(--mono);font-weight:600;font-size:.95rem;letter-spacing:-.01em}
+.top nav{margin-left:auto;display:flex;gap:1.4rem;font-size:.875rem}
+.top nav a{color:var(--ink-soft);text-decoration:none;border-bottom:1px solid transparent;padding-bottom:1px}
+.top nav a:hover{color:var(--ink);border-bottom-color:var(--cinnabar)}
+
+/* ── Hero ──────────────────────────────────────── */
+.hero{padding:clamp(3rem,10vw,6rem) 0 clamp(2rem,6vw,3.5rem)}
+
+/* 拼音标注：整个产品就是这一件事 */
+.ruby{
+  display:flex;gap:clamp(.1em,.6vw,.25em);
+  justify-content:flex-start;align-items:flex-end;
+  margin:0 0 clamp(1.5rem,4vw,2.25rem);
+}
+.ruby .ch{display:flex;flex-direction:column;align-items:center}
+.ruby .py{
+  font-family:var(--mono);font-weight:500;
+  font-size:clamp(.85rem,3.1vw,1.6rem);
+  color:var(--cinnabar);
+  letter-spacing:.02em;line-height:1.1;
+  margin-bottom:.28em;
+}
+.ruby .hz{
+  font-family:var(--han);font-weight:600;
+  font-size:clamp(3.4rem,15vw,8.5rem);
+  line-height:.94;letter-spacing:.01em;
+}
+/* 拼音和汉字之间那条细线，像字帖的格 */
+.ruby .ch::after{content:none}
+
+.lede{
+  font-size:clamp(1.05rem,2.4vw,1.35rem);
+  line-height:1.55;max-width:30rem;
+  color:var(--ink);margin:0 0 .6rem;
+}
+.lede-sub{
+  font-size:1rem;color:var(--ink-soft);
+  max-width:var(--measure);margin:0 0 2.2rem;
+}
+
+/* ── 可以玩的终端 ───────────────────────────────── */
+.demo{
+  background:var(--term-bg);
+  border-radius:6px;
+  overflow:hidden;
+  box-shadow:0 1px 0 var(--rule),0 18px 40px -28px rgba(0,0,0,.55);
+  max-width:44rem;
+}
+.demo-bar{
+  display:flex;align-items:center;gap:.5rem;
+  padding:.55rem .8rem;
+  border-bottom:1px solid var(--term-rule);
+}
+.demo-bar i{width:9px;height:9px;border-radius:50%;background:#34383a;display:block}
+.demo-bar .path{
+  font-family:var(--mono);font-size:.72rem;color:var(--term-dim);
+  margin-left:.4rem;
+}
+.demo-body{
+  font-family:var(--mono);font-size:.9rem;line-height:1.75;
+  color:var(--term-fg);
+  padding:1rem .95rem 1.1rem;
+  min-height:12.5rem;
+}
+.demo-line{display:flex;flex-wrap:wrap;align-items:baseline;gap:.42em}
+.demo-line .prompt{color:var(--term-dim)}
+.demo-line .cmd{color:var(--term-fg)}
+.typed{color:var(--term-fg)}
+.caret{
+  display:inline-block;width:.55em;height:1.05em;
+  background:var(--term-fg);vertical-align:-.18em;
+  animation:blink 1.15s steps(1) infinite;
+}
+@keyframes blink{50%{opacity:0}}
+
+.demo-hint{
+  margin-top:.9rem;color:var(--term-dim);font-size:.78rem;
+  display:flex;align-items:center;gap:.5em;flex-wrap:wrap;
+}
+kbd{
+  font-family:var(--mono);font-size:.72rem;
+  border:1px solid var(--term-rule);border-bottom-width:2px;
+  border-radius:3px;padding:.1em .42em;color:var(--term-fg);
+  background:#1d2123;
+}
+.demo-group{margin-top:1rem}
+.demo-group .label{color:var(--cinnabar);font-size:.78rem;margin-bottom:.35rem}
+.cands{display:flex;flex-wrap:wrap;gap:.35rem .9rem}
+.cand{
+  font-family:var(--han);font-size:.9rem;
+  padding:.08em .35em;border-radius:3px;
+  color:var(--term-fg);white-space:nowrap;
+}
+.cand .py{font-family:var(--mono);font-size:.76rem;color:var(--term-dim);margin-left:.4em}
+.cand[aria-selected="true"]{background:var(--cinnabar);color:#fff}
+.cand[aria-selected="true"] .py{color:rgba(255,255,255,.72)}
+.demo-empty{color:var(--term-dim);font-size:.82rem;margin-top:1rem}
+
+.demo-input{
+  position:absolute;opacity:0;pointer-events:none;
+  width:1px;height:1px;
+}
+.demo-shell{position:relative}
+.demo-shell.is-focused .demo{box-shadow:0 0 0 2px var(--cinnabar),0 18px 40px -28px rgba(0,0,0,.55)}
+
+/* ── 通用区块 ──────────────────────────────────── */
+section{padding:clamp(2.75rem,7vw,4.5rem) 0;border-top:1px solid var(--rule)}
+h2{
+  font-size:clamp(1.35rem,3vw,1.75rem);font-weight:600;
+  letter-spacing:-.015em;margin:0 0 .5rem;
+}
+.sec-note{color:var(--ink-soft);max-width:var(--measure);margin:0 0 2rem;font-size:.95rem}
+
+/* ── 对照表 ────────────────────────────────────── */
+.map{border-top:1px solid var(--rule);max-width:42rem}
+.map-row{
+  display:grid;
+  grid-template-columns:11rem 1fr;
+  gap:1rem;align-items:center;
+  padding:.72rem 0;
+  border-bottom:1px solid var(--rule);
+}
+.map-row .in{font-family:var(--mono);font-size:1rem;color:var(--ink)}
+.map-row .out{font-family:var(--han);font-size:1.05rem;font-weight:500}
+.map-row .why{
+  grid-column:2;font-size:.8rem;color:var(--ink-faint);
+  margin-top:-.15rem;
+}
+@media (max-width:34rem){
+  .map-row{grid-template-columns:8rem 1fr;gap:.7rem}
+  .map-row .why{grid-column:1/-1}
+}
+
+/* ── 安装 ──────────────────────────────────────── */
+.tabs{display:flex;flex-wrap:wrap;gap:.3rem;margin-bottom:1rem}
+.tab{
+  font:inherit;font-size:.85rem;
+  background:none;border:1px solid var(--rule);
+  color:var(--ink-soft);
+  padding:.32rem .78rem;border-radius:3px;cursor:pointer;
+}
+.tab:hover{color:var(--ink)}
+.tab[aria-selected="true"]{
+  background:var(--ink);color:var(--paper);border-color:var(--ink);
+}
+@media (prefers-color-scheme:dark){
+  .tab[aria-selected="true"]{background:var(--ink);color:var(--paper)}
+}
+.code{
+  position:relative;
+  background:var(--term-bg);color:var(--term-fg);
+  border-radius:5px;padding:1rem 3.2rem 1rem 1rem;
+  font-family:var(--mono);font-size:.86rem;line-height:1.75;
+  overflow-x:auto;max-width:46rem;
+  white-space:pre;
+}
+.code .c{color:var(--term-dim)}
+.copy{
+  position:absolute;top:.6rem;right:.6rem;
+  font:inherit;font-family:var(--mono);font-size:.72rem;
+  background:#1d2123;color:var(--term-dim);
+  border:1px solid var(--term-rule);border-radius:3px;
+  padding:.22em .55em;cursor:pointer;
+}
+.copy:hover{color:var(--term-fg)}
+.copy.done{color:#fff;background:var(--cinnabar);border-color:var(--cinnabar)}
+.after-code{margin-top:1rem;font-size:.9rem;color:var(--ink-soft);max-width:var(--measure)}
+.after-code code{font-family:var(--mono);font-size:.85em;background:var(--paper-2);padding:.1em .3em;border-radius:2px}
+
+/* ── 四层 ──────────────────────────────────────── */
+.stack{max-width:44rem;display:flex;flex-direction:column-reverse;gap:0}
+.layer{
+  border:1px solid var(--rule);border-bottom:none;
+  padding:1rem 1.1rem;
+}
+.stack .layer:first-child{border-bottom:1px solid var(--rule)}
+.layer h3{
+  margin:0 0 .3rem;font-size:1rem;font-weight:600;
+  display:flex;align-items:baseline;gap:.6rem;
+}
+.layer h3 .tag{
+  font-family:var(--mono);font-size:.72rem;color:var(--ink-faint);
+  font-weight:400;
+}
+.layer p{margin:0;font-size:.9rem;color:var(--ink-soft);line-height:1.6}
+.layer p code{font-family:var(--mono);font-size:.85em}
+.stack-note{max-width:var(--measure);font-size:.85rem;color:var(--ink-faint);margin:1rem 0 0}
+
+/* ── 限制 ──────────────────────────────────────── */
+.limits{max-width:42rem;margin:0;padding:0;list-style:none}
+.limits li{
+  padding:.55rem 0 .55rem 1.1rem;position:relative;
+  font-size:.92rem;color:var(--ink-soft);
+  border-bottom:1px solid var(--rule);
+}
+.limits li:first-child{border-top:1px solid var(--rule)}
+.limits li::before{
+  content:"";position:absolute;left:0;top:1.15em;
+  width:.42rem;height:1px;background:var(--cinnabar);
+}
+.limits b{color:var(--ink);font-weight:500}
+
+/* ── 页脚 ──────────────────────────────────────── */
+footer{
+  border-top:1px solid var(--rule);
+  padding:2rem 0 3rem;
+  font-size:.85rem;color:var(--ink-faint);
+  display:flex;gap:1.2rem;flex-wrap:wrap;align-items:baseline;
+}
+footer a{color:var(--ink-soft);text-decoration:none;border-bottom:1px solid var(--rule)}
+footer a:hover{color:var(--ink);border-bottom-color:var(--cinnabar)}
+footer .sp{margin-left:auto;font-family:var(--mono);font-size:.78rem}
+
+@media (prefers-reduced-motion:reduce){
+  *{animation-duration:.001ms!important;animation-iteration-count:1!important;transition-duration:.001ms!important}
+}
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <header class="top">
+    <span class="name">zsh-pinyin-tab</span>
+    <nav>
+      <a href="#install">安装</a>
+      <a href="#how">原理</a>
+      <a href="https://github.com/catundercar/zsh-pinyin-tab">GitHub</a>
+    </nav>
+  </header>
+</div>
+
+<main>
+<div class="wrap">
+  <div class="hero">
+    <!-- 拼音标注：这个插件干的事，就是把上面那行变成下面那行 -->
+    <p class="ruby" aria-label="文档，拼音 wen dang">
+      <span class="ch" aria-hidden="true"><span class="py">wen</span><span class="hz">文</span></span>
+      <span class="ch" aria-hidden="true"><span class="py">dang</span><span class="hz">档</span></span>
+    </p>
+
+    <p class="lede">在 zsh 里敲拼音，Tab 补出中文文件名。</p>
+    <p class="lede-sub">
+      中文目录名一直是 Tab 补全的死角——名字打不出来，只能靠鼠标滚。
+      这个插件把拼音候选<strong>加</strong>在原生补全后面，`cd wd` 就能补出「文档」，
+      原生补全该给的东西一个都不少。
+    </p>
+
+    <div class="demo-shell" id="shell">
+      <div class="demo">
+        <div class="demo-bar">
+          <i></i><i></i><i></i>
+          <span class="path">~/notes</span>
+        </div>
+        <div class="demo-body">
+          <div class="demo-line">
+            <span class="prompt">$</span>
+            <span class="cmd">cd</span>
+            <span><span class="typed" id="typed">wd</span><span class="caret" id="caret"></span></span>
+          </div>
+          <div id="result"></div>
+          <p class="demo-hint">
+            点一下这里，敲拼音，按 <kbd>Tab</kbd> 换候选
+          </p>
+        </div>
+      </div>
+      <input class="demo-input" id="input" value="wd" autocomplete="off"
+             autocapitalize="off" spellcheck="false" aria-label="在演示终端里输入拼音">
+    </div>
+  </div>
+</div>
+
+<section>
+  <div class="wrap">
+    <h2>敲什么，补出什么</h2>
+    <p class="sec-note">首字母、全拼、以及两者的混合都认。演练场里是这些目录。</p>
+    <div class="map">
+      <div class="map-row"><span class="in">wd</span><span class="out">文档</span><span class="why">每个字取首字母</span></div>
+      <div class="map-row"><span class="in">wendang</span><span class="out">文档</span><span class="why">全拼</span></div>
+      <div class="map-row"><span class="in">wend</span><span class="out">文档</span><span class="why">前一个字全拼，后一个字首字母——半截也认</span></div>
+      <div class="map-row"><span class="in">xxbj</span><span class="out">学习笔记</span><span class="why">四个字的首字母</span></div>
+      <div class="map-row"><span class="in">wdp</span><span class="out">我的Projects</span><span class="why">中英混排，连续的英文段当一个整体</span></div>
+      <div class="map-row"><span class="in">myd</span><span class="out">my-docs</span><span class="why">分隔符可跳过</span></div>
+      <div class="map-row"><span class="in">cw / zw</span><span class="out">重文</span><span class="why">多音字两个读音都留着</span></div>
+    </div>
+  </div>
+</section>
+
+<section id="install">
+  <div class="wrap">
+    <h2>安装</h2>
+    <p class="sec-note">
+      仓库根目录是标准的 <code>zsh-pinyin-tab.plugin.zsh</code>，主流插件管理器加一行就行。
+      在 <code>compinit</code> 之前或之后加载都可以。
+    </p>
+
+    <div class="tabs" role="tablist" aria-label="安装方式">
+      <button class="tab" role="tab" aria-selected="true"  data-t="omz">oh-my-zsh</button>
+      <button class="tab" role="tab" aria-selected="false" data-t="zinit">zinit</button>
+      <button class="tab" role="tab" aria-selected="false" data-t="antidote">antidote</button>
+      <button class="tab" role="tab" aria-selected="false" data-t="sheldon">sheldon</button>
+      <button class="tab" role="tab" aria-selected="false" data-t="manual">手动</button>
+    </div>
+
+    <div class="code" id="code"><button class="copy" id="copy">复制</button><span id="codetext"></span></div>
+
+    <p class="after-code">
+      装完 <code>exec zsh</code> 重开一下，随便找个有中文目录的地方敲 <code>cd wd</code> 再按 Tab。
+      不确定装没装上就跑 <code>zsh tools/doctor.zsh</code>，它不依赖交互式终端，
+      能把「插件坏了」和「环境不对」分开。
+    </p>
+  </div>
+</section>
+
+<section id="how">
+  <div class="wrap">
+    <h2>它怎么工作</h2>
+    <p class="sec-note">四层，自底向上。</p>
+
+    <div class="stack">
+      <div class="layer">
+        <h3>词表 <span class="tag">data/pinyin.zsh</span></h3>
+        <p>覆盖 CJK 基本区 20892 个字，多音字每字最多留三个读音。由 pypinyin 离线生成，你的机器上不需要 Python。懒加载，而且必须用 <code>zcompile</code> 过的 <code>.zwc</code>——原始 <code>.zsh</code> 解析要 210ms，<code>.zwc</code> 只要 6ms。</p>
+      </div>
+      <div class="layer">
+        <h3>索引 <span class="tag">_zpt_index</span></h3>
+        <p>把名字拆成读音序列，<code>我的_Projects</code> 拆成 <code>(wo)(de|di)[_](projects)</code>。连续的英文数字合并成一个 token，分隔符标成可跳过。按名字缓存而不是按路径——「文档」「下载」这类名字在不同地方反复出现，转一次处处受益。</p>
+      </div>
+      <div class="layer">
+        <h3>匹配 <span class="tag">_zpt_match</span></h3>
+        <p>是个 DP，不是贪心。反例：输入 <code>wen</code> 配「文档」，<code>w</code> 当首字母走不通（剩下的 <code>en</code> 匹配不上 dang），必须 <code>wen</code> 整体消耗掉「文」才对。每个读音允许消耗它的任意前缀，首字母和全拼就被一条规则覆盖了。</p>
+      </div>
+      <div class="layer">
+        <h3>补全集成 <span class="tag">_zpt_complete</span></h3>
+        <p>先跑这个命令原本的补全函数，再把拼音候选加进去。顺序和返回值都有讲究：返回值要如实反映「这一轮到底有没有产出候选」，否则会把用户 <code>matcher-list</code> 里「配不上再忽略大小写」那几轮整个吃掉。</p>
+      </div>
+    </div>
+    <p class="stack-note">
+      真正跑 DP 的候选很少：先用首字母集合一次 glob 否掉九成以上，再用首字母串和全拼串的前缀命中直接判正，剩下的才进 DP。500 个中文目录下，每次 Tab 中位数 4ms。
+    </p>
+  </div>
+</section>
+
+<section>
+  <div class="wrap">
+    <h2>它不做什么</h2>
+    <p class="sec-note">写在前面，省得你装完才发现。</p>
+    <ul class="limits">
+      <li><b>不支持乱序和跳字。</b><code>wgz</code> 不会匹配「我的工作」，必须连续。换来的是候选列表干净，Tab 一下通常就一两个结果。</li>
+      <li><b>多段路径只匹配最后一段。</b><code>cd wd/xm</code> 里的 <code>wd/</code> 必须是真实存在的路径。想逐段展开那是 zoxide 的活。</li>
+      <li><b>有子命令的命令不在默认表里。</b>挂到 <code>git</code> 上，<code>git ch</code> 除了 checkout 还会冒出拼音匹配 ch 的文件——插件分不清这个位置该补子命令还是补文件。</li>
+      <li><b>多音字全展开，没有词频排序。</b>「重」（zhong/chong）、「行」（xing/hang）这类字会让候选变多。</li>
+      <li><b>只覆盖 CJK 基本区。</b>扩展区生僻字、日文假名当作「可跳过的字符」处理。</li>
+    </ul>
+  </div>
+</section>
+</main>
+
+<div class="wrap">
+  <footer>
+    <a href="https://github.com/catundercar/zsh-pinyin-tab">源码</a>
+    <a href="https://github.com/catundercar/zsh-pinyin-tab/issues">反馈</a>
+    <a href="https://github.com/catundercar/zsh-pinyin-tab/blob/main/LICENSE">MIT</a>
+    <span class="sp">zsh 5.8+ · UTF-8 locale</span>
+  </footer>
+</div>
+
+<script>
+(function(){
+"use strict";
+
+/* 演练场里的目录，和仓库端到端测试用的是同一批。
+   每项是 [名字, 读音序列]；读音序列里一个元素是一个 token，
+   多音字用 | 分开，opt 表示这个 token 可以整个跳过（分隔符）。 */
+var DIRS = [
+  ["文档",          [["wen"],["dang"]]],
+  ["下载",          [["xia"],["zai"]]],
+  ["项目",          [["xiang"],["mu"]]],
+  ["学习笔记",       [["xue"],["xi"],["bi"],["ji"]]],
+  ["我的 归档",      [["wo"],["de","di"],[" ",1],["gui"],["dang"]]],
+  ["我的Projects",  [["wo"],["de","di"],["projects"]]],
+  ["重文",          [["zhong","chong"],["wen"]]],
+  ["work",         [["work"]]],
+  ["my-docs",      [["my"],["-",1],["docs"]]]
+];
+
+/* 和 _zpt_match 一样的 DP：状态是「前 i 个 token 处理完，恰好消耗了
+   查询的前 j 个字符」。每个读音允许消耗它的任意前缀，k=1 是首字母，
+   k=读音长度 是全拼，一条规则覆盖两种情况。查询消耗完即命中，不要求
+   名字被消耗完（前缀补全该有的行为）。 */
+function match(q, toks){
+  var n = toks.length, qlen = q.length;
+  if(!qlen) return false;
+  var cur = new Array(qlen+1).fill(false);
+  cur[0] = true;
+  for(var i=0;i<n;i++){
+    var tok = toks[i], opt = tok[tok.length-1] === 1;
+    var reads = opt ? tok.slice(0,-1) : tok;
+    var next = opt ? cur.slice() : new Array(qlen+1).fill(false);
+    for(var j=0;j<qlen;j++){
+      if(!cur[j]) continue;
+      for(var r=0;r<reads.length;r++){
+        var p = reads[r], maxk = Math.min(p.length, qlen-j);
+        for(var k=1;k<=maxk;k++){
+          if(q[j+k-1] !== p[k-1]) break;
+          next[j+k] = true;
+        }
+      }
+    }
+    cur = next;
+    if(cur[qlen]) return true;
+    if(cur.indexOf(true) === -1) return false;
+  }
+  return false;
+}
+
+function fullPinyin(toks){
+  return toks.map(function(t){
+    var opt = t[t.length-1] === 1;
+    return opt ? "" : t[0];
+  }).join("");
+}
+
+function candidates(q){
+  q = q.toLowerCase();
+  if(!q) return [];
+  var out = [];
+  for(var i=0;i<DIRS.length;i++){
+    var name = DIRS[i][0], toks = DIRS[i][1];
+    /* 纯英文名字原生补全已经能补出来，不重复加 */
+    if(name.toLowerCase().indexOf(q) === 0) continue;
+    if(match(q, toks)) out.push({name:name, py:fullPinyin(toks)});
+  }
+  /* 按拼音长度排序，短的在前：wd 应该先给「文档」而不是「我的归档」 */
+  out.sort(function(a,b){ return a.py.length - b.py.length || a.py.localeCompare(b.py); });
+  return out;
+}
+
+var input  = document.getElementById("input");
+var typed  = document.getElementById("typed");
+var result = document.getElementById("result");
+var shell  = document.getElementById("shell");
+var sel = 0;
+
+function render(){
+  var q = input.value;
+  typed.textContent = q;
+  var cands = candidates(q);
+
+  if(!q){
+    result.innerHTML = '<p class="demo-empty">敲点拼音试试：wd、xxbj、wendang、myd</p>';
+    return;
+  }
+  if(!cands.length){
+    result.innerHTML = '<p class="demo-empty">没有匹配的候选——这时候补全会原样交回给 zsh</p>';
+    return;
+  }
+  if(sel >= cands.length) sel = 0;
+
+  var html = '<div class="demo-group"><div class="label">拼音匹配</div><div class="cands">';
+  for(var i=0;i<cands.length;i++){
+    html += '<span class="cand" aria-selected="'+(i===sel)+'">'
+          + cands[i].name.replace(/&/g,"&amp;").replace(/</g,"&lt;")
+          + '<span class="py">'+cands[i].py+'</span></span>';
+  }
+  html += '</div></div>';
+  result.innerHTML = html;
+}
+
+input.addEventListener("input", function(){ sel = 0; render(); });
+input.addEventListener("keydown", function(e){
+  if(e.key === "Tab"){
+    e.preventDefault();
+    var n = candidates(input.value).length;
+    if(n) sel = (sel + (e.shiftKey ? n-1 : 1)) % n;
+    render();
+  }
+});
+input.addEventListener("focus", function(){ shell.classList.add("is-focused"); });
+input.addEventListener("blur",  function(){ shell.classList.remove("is-focused"); });
+shell.addEventListener("click", function(){ input.focus(); });
+render();
+
+/* ── 安装方式切换 ── */
+var SNIP = {
+  omz:
+    '<span class="c"># 克隆到 oh-my-zsh 的 custom 插件目录</span>\n' +
+    'git clone https://github.com/catundercar/zsh-pinyin-tab \\\n' +
+    '  ${ZSH_CUSTOM:-~/.oh-my-zsh/custom}/plugins/zsh-pinyin-tab\n\n' +
+    '<span class="c"># 然后在 ~/.zshrc 里加进 plugins</span>\n' +
+    'plugins=(git zsh-pinyin-tab)',
+  zinit:
+    '<span class="c"># ~/.zshrc</span>\n' +
+    'zinit light catundercar/zsh-pinyin-tab',
+  antidote:
+    '<span class="c"># ~/.zsh_plugins.txt</span>\n' +
+    'catundercar/zsh-pinyin-tab',
+  sheldon:
+    '<span class="c"># plugins.toml</span>\n' +
+    '[plugins.zsh-pinyin-tab]\n' +
+    'github = "catundercar/zsh-pinyin-tab"',
+  manual:
+    'git clone https://github.com/catundercar/zsh-pinyin-tab ~/.zsh/zsh-pinyin-tab\n' +
+    "echo 'source ~/.zsh/zsh-pinyin-tab/zsh-pinyin-tab.plugin.zsh' >> ~/.zshrc"
+};
+
+var codetext = document.getElementById("codetext");
+var tabs = Array.prototype.slice.call(document.querySelectorAll(".tab"));
+
+function show(key){
+  codetext.innerHTML = SNIP[key];
+  tabs.forEach(function(t){ t.setAttribute("aria-selected", String(t.dataset.t === key)); });
+}
+tabs.forEach(function(t){
+  t.addEventListener("click", function(){ show(t.dataset.t); });
+});
+show("omz");
+
+/* ── 复制 ── */
+var copy = document.getElementById("copy");
+copy.addEventListener("click", function(e){
+  e.stopPropagation();
+  var text = codetext.textContent;
+  navigator.clipboard.writeText(text).then(function(){
+    copy.textContent = "已复制";
+    copy.classList.add("done");
+    setTimeout(function(){ copy.textContent = "复制"; copy.classList.remove("done"); }, 1600);
+  }).catch(function(){
+    copy.textContent = "复制失败";
+    setTimeout(function(){ copy.textContent = "复制"; }, 1600);
+  });
+});
+})();
+</script>
+</body>
+</html>
